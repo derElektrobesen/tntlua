@@ -21,6 +21,11 @@
 -- profile_multiset(profile_id, ...)
 -- - sets a given variable number of preferences.
 --
+-- profile_increment(user_id, pref_id, inc_v)
+-- - atomic increment of given preference by inc_v
+--
+-- profile_increment_multi(user_id, ...)
+-- - increment a given variable number of preferences
 
 -- namespace which stores all notifications
 local space_no = 0
@@ -96,6 +101,23 @@ local function store_profile(profile)
     return box.replace(space_no, unpack(tuple))
 end
 
+local function profile_create_empty_with_defaults(profile_id, pref_list)
+    local profile_tuple = { profile_id }
+    local k, v
+
+    repeat
+        k, v = next(pref_list, k)           -- key
+        if k == nil then break end
+
+        k, _ = next(pref_list, k)           -- skip value
+        if k == nil then break end
+
+        table.insert(profile_tuple, v)      -- already packed
+        table.insert(profile_tuple, '1')
+    until k == nil
+
+    return box.replace(space_no, unpack(profile_tuple))
+end
 
 -- ========================================================================= --
 -- Profile interface
@@ -161,6 +183,131 @@ end
 
 function profile_set(profile_id, pref_key, pref_value)
     return profile_multiset(profile_id, pref_key, pref_value)
+end
+
+function profile_increment_multi(profile_id, ...)
+    local pref_list = {...}
+    local pref_list_len = table.getn(pref_list)
+
+    -- check input params
+    if profile_id == nil then
+        error("profile's id undefined")
+    end
+
+    if pref_list_len == 0 then
+        error("no preferences found to inc")
+    end
+
+    if pref_list_len % 2 ~= 0 then
+        error("illegal parameters: var arguments list should contain pairs pref_key pref_value")
+    end
+
+    -- request a profile tuple from storage
+    local profile_tuple = box.select(space_no, 0, profile_id)
+    if profile_tuple == nil then
+        -- profile is not exists yet. Create it with defaults
+        return profile_create_empty_with_defaults(profile_id, pref_list)
+    end
+
+    -- make a dict from pref_list
+    local pref_dict = {}
+    local k = nil
+
+    repeat
+        local pref_key, pref_value
+
+        k, pref_key = next(pref_list, k)
+        if k == nil then break end
+
+        -- no need to check boundary: even number of items
+        k, pref_value = next(pref_list, k)
+
+        -- put preference into dict
+        -- don't unpack the key: in tarantool key is packed too
+        -- if pref_value is not a number, tonumber() will return nill and the pref_key will be ignored
+        pref_dict[pref_key] = tonumber(pref_value)
+    until k == nil
+
+    -- variables to store replace arguments
+    local replace_mask, replace_args = '', {}
+
+    local add_replacement = function (index, key, val, incremented)
+        replace_mask = replace_mask .. "=p"
+
+        if not incremented then
+            -- need to set unexisted value. Add a key into tuple
+            replace_mask = replace_mask .. "=p"
+            table.insert(replace_args, index)
+            table.insert(replace_args, key)
+        end
+
+        table.insert(replace_args, index + 1)
+        table.insert(replace_args, val)
+
+        -- in case of tuple extend, returns new tuple length
+        return index + 2
+    end
+
+    -- skip user id
+    k, _ = profile_tuple:next()
+
+    -- index to make a replacement
+    local index = 1
+
+    -- main loop
+    while k ~= nil do
+        local pref_key, pref_value
+
+        k, pref_key = profile_tuple:next(k)
+        if k == nil then
+            -- no more items in profile tuple
+            break
+        end
+
+        k, pref_value = profile_tuple:next(k)
+
+        -- find a key in given preferences
+        local inc_val = pref_dict[pref_key]
+        if inc_val ~= nil then
+            -- found a key to increment
+            -- save item to store changes in tarantool
+            if pref_value == nil then
+                -- set default value
+                add_replacement(index, pref_key, '1')
+            else
+                pref_value = tonumber(pref_value)
+                if pref_value ~= nil then
+                    -- increment value by inc_val
+                    add_replacement(index, pref_key, tostring(pref_value + inc_val), true)
+                end
+            end
+
+            -- 'remove' updated key from pref_dict
+            pref_dict[pref_key] = nil
+        end
+
+        index = index + 2
+    end
+
+    -- add still unexisted requested keys into profile with default value
+    for k, v in pairs(pref_dict) do
+        if k ~= nil and v ~= nil then
+            -- still not processed item: add with default value
+            index = add_replacement(index, k, '1')
+        end
+    end
+
+    if replace_mask == '' then
+        -- shouldn't be
+        error("nothing to increment")
+    end
+
+    -- replace tuple on storage
+    return box.update(space_no, profile_id, replace_mask, unpack(replace_args))
+end
+
+function profile_increment(profile_id, pref_key, inc_val)
+    return profile_increment_multi(profile_id, pref_key, inc_val)
 end
 
 -- ========================================================================== --
