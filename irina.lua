@@ -378,6 +378,23 @@ function irina_get_usual_users(shardid)
 	return unpack(result)
 end
 
+function irina_get_user(email)
+	local info = box.select(0, 0, email)
+	if info == nil then
+		return nil
+	end
+
+	local shard_info = box.select(1, 0, info[5])  -- get shard by id
+	local shard_addr = ''
+	if shard_info ~= nil then
+		shard_addr = shard_info[1]
+	end
+
+	local ret_info = { info:unpack() }
+	table.insert(ret_info, shard_addr)
+	return ret_info
+end
+
 local function is_expired(args, tuple)
 	if tuple == nil or #tuple <= args.fieldno then return nil end
 	local is_expirable = box.unpack('i', tuple[3])
