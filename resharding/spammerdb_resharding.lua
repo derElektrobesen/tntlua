@@ -6,30 +6,50 @@ if resharding == nil then
     dofile('resharding.lua')
 end
 
-local old_spammerdb_set = spammerdb_set
-local old_spammerdb_get = spammerdb_get
-local old_spammerdb_getall = spammerdb_getall
-local old_spammerdb_delall = spammerdb_delall
+local old_spammerdb_set = nil
+local old_spammerdb_get = nil
+local old_spammerdb_getall = nil
+local old_spammerdb_delall = nil
 
 --
---      All this functions should return 4 values:
---          'function_name', key_field, { args... }, { return_args ... }
---      function_name will be called on slave
---      key_field will be used to calculate correct shard
---      args will be sent as a request arguments
---      return_args will be returned to client
---      This functions should modify master and tell what function should be called on slave
+-- All this functions should return 4 values:
+--     'function_name', key_field, { args... }, { return_args ... }
+-- function_name will be called on slave
+-- key_field will be used to calculate correct shard
+-- args will be sent as a request arguments
+-- return_args will be returned to client
+-- This functions should modify master and tell what function should be called on slave
 --
-local function on_spammerdb_set()
-    
+local function on_spammerdb_set(userid, stype, email, value)
+    local ret = { old_spammerdb_set(userid, stype, email, value) }
+    return 'spammerdb_set', userid, { userid, stype, email, value }, ret
 end
 
-local function on_spammerdb_get(fname, ...)
-
+local function on_spammerdb_get(userid, stype, ...)
+    local args = { userid, stype, ... }
+    local ret = { old_spammerdb_get(unpack(args)) }
+    return 'spammerdb_get', userid, args, ret
 end
 
-local function on_spammerdb_delall()
+local function on_spammerdb_getall(userid)
+    local ret = { old_spammerdb_getall(userid) }
+    return 'spammerdb_getall', userid, { userid }, ret
+end
 
+local function on_spammerdb_delall(userid)
+    -- just call native function
+    local ret = { old_spammerdb_delall(userid) }
+    return 'spammerdb_delall', userid, { userid }, ret
+end
+
+local function on_spammerdb_get_multi(fname, ...)
+    if fname == "spammendb_get" then
+        return on_spammerdb_get(...)
+    elseif fname == "spammendb_getall" then
+        return on_spammerdb_getall(...)
+    else
+        error("Invalid function name came into on_spammerdb_get_multi: " .. fname)
+    end
 end
 
 --
@@ -42,7 +62,7 @@ end
 function spammerdb_resharding_set_configuration(conf)
     local configuration = {
         insert = on_spammerdb_set,
-        select = on_spammerdb_get,
+        select = on_spammerdb_get_multi,
         delete = on_spammerdb_delall,
         replace = function (...) end,
         shards = conf,
@@ -51,6 +71,11 @@ function spammerdb_resharding_set_configuration(conf)
     }
 
     resharding.set_configuration(configuration)
+
+    old_spammerdb_set = spammerdb_set
+    old_spammerdb_get = spammerdb_get
+    old_spammerdb_getall = spammerdb_getall
+    old_spammerdb_delall = spammerdb_delall
 
     spammerdb_set = resharding.on_insert
     spammendb_get = function (...) return resharding.on_select("spammerdb_get", ...) end
@@ -63,5 +88,10 @@ function restore_shard()
     spammendb_get = old_spammerdb_get
     spammendb_getall = old_spammerdb_getall
     spammerdb_delall = old_spammerdb_delall
+
+    old_spammerdb_set = nil
+    old_spammendb_get = nil
+    old_spammendb_getall = nil
+    old_spammerdb_delall = nil
 end
 
