@@ -71,7 +71,7 @@ end
 --      log_lvl
 --      i_begin
 --      i_end
---      disable_dryrun
+--      disable_dryrun TODO: this options was renamed
 function spammerdb_set_slave_configuration(conf)
     -- host, port, log_lvl, i_begin, i_end, timeout, dryrun)
     if conf.log_lvl == nil then

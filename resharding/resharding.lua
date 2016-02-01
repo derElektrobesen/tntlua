@@ -441,11 +441,13 @@ local function check_slave_shard(space_no, index_no, key_cb, index_cb, master_ho
         end
     end
 
-    log_info("Total rows: " .. (rows_count + rows_skipped))
-    log_info("Rows skipped: " .. rows_skipped)
-    log_info("Rows checked: " .. rows_count)
-    log_info("Rows ok: " .. rows_ok)
-    log_info("Invalid rows: " .. (rows_count - rows_ok))
+    return {
+        total = (rows_count + rows_skipped),
+        skipped = rows_skipped,
+        checked = rows_count,
+        ok = rows_ok,
+        fail = (rows_count - rows_ok),
+    }
 end
 
 --
@@ -484,11 +486,13 @@ local function check_master_shard(space_no, index_no, key_cb, index_cb)
         end
     end
 
-    log_info("Total rows: " .. rows_count)
-    log_info("Rows skipped: " .. rows_skipped)
-    log_info("Rows checked: " .. (rows_count - rows_skipped))
-    log_info("Rows ok: " .. rows_ok)
-    log_info("Invalid rows: " .. (rows_count - rows_skipped - rows_ok))
+    return {
+        total = rows_count,
+        skipped = rows_skipped,
+        checked = (rows_count - rows_skipped),
+        ok = rows_ok,
+        fail = (rows_count - rows_skipped - rows_ok),
+    }
 end
 
 --
@@ -509,9 +513,11 @@ end
 --              box.select(0, 0, uid, email)
 --                               \--------/
 --                         should be returned here
+--      on_finish
+--          this callback will be called when check is done (nothing will be called if nil)
 --
 local check_shard_fiber = nil
-function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep_time)
+function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep_time, on_finish)
     -- key_cb will be called for each row => sleep in it
     local extra_args = {}
     local func = check_master_shard
@@ -521,6 +527,15 @@ function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep
         extra_args = { shards_configuration.host, shards_configuration.port, shards_configuration.i_begin, shards_configuration.i_end }
     end
 
+    if on_finish ~= nil then
+        local real_func = func
+        func = function (...)
+            real_func(...)
+            log_info("Shard checking complete!")
+            on_finish()
+        end
+    end
+
     if check_shard_fiber then
         if box.fiber.status(check_shard_fiber) ~= 'dead' then
             error("Can't start check_shard: fiber is already running, status: " .. box.fiber.status(check_shard_fiber) .. ", id: " .. box.fiber.id(check_shard_fiber))
@@ -528,7 +543,23 @@ function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep
     end
 
     local row_no = 0
-    check_shard_fiber = box.fiber.wrap(func,
+    check_shard_fiber = box.fiber.wrap(
+        function (...)
+            -- main function to be called
+            local res = func(...)
+            log_info("Shard cheking complete")
+            if on_finish ~= nil then
+                -- Needed, for example, to start another shace check
+                on_finish()
+            end
+
+            log_info("Space " .. space_no .. ", index " .. index_no .. " check results:")
+            log_info("Total rows: " .. res.total)
+            log_info("Rows skipped: " .. res.skipped)
+            log_info("Rows checked: " .. res.checked)
+            log_info("Rows ok: " .. res.ok)
+            log_info("Invalid rows: " .. res.fail)
+        end,
         space_no,
         index_no,
         function (...)
@@ -543,6 +574,8 @@ function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep
         end,
         index_cb,
         unpack(extra_args))
+
+    log_info("Shard checking started. Use stop_check_shard() to stop this check")
 end
 
 function stop_check_shard()
@@ -586,7 +619,7 @@ end
 
 --
 -- Function iterates over all records in tarantool and REMOVES records with key from other shards.
--- Call whit function with "yes, i'm really sure" first argument ifg you are really sure to do this.
+-- Call this function with "yes, i'm really sure" first argument ifg you are really sure to do this.
 --
 --      space_no
 --          Space number to check
@@ -601,9 +634,12 @@ end
 --              box.delete(0, uid, email)
 --                            \--------/
 --                      should be returned here
+--      on_finish
+--          this function will be called when all rows will be removed.
+--          Should be used to restart cleanup, for example, for other space
 --
 local cleanup_shard_fiber = nil
-function cleanup_shard(message, space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep_time)
+function cleanup_shard(message, space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep_time, on_finish)
     if shards_configuration == nil then
         error("Call set_{master|slave}_configuration first!")
     end
@@ -646,6 +682,12 @@ function cleanup_shard(message, space_no, index_no, key_cb, index_cb, rows_per_s
                 rows_removed_total = rows_removed_total + rows_removed
         until rows_removed == 0
 
+        if on_finish then
+            -- For expample, restart cleanup for the next space
+            on_finish()
+        end
+
+        log_info("Space " .. space_no .. ", index " .. index_no .. " was cleanuped successfully. Results:")
         log_info(n_rows .. " rows processed (" .. iter_no .. " iterations)")
         log_info(rows_removed_total .. " rows removed")
         log_info((n_rows - rows_removed_total) .. " rows skipped")
