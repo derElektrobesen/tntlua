@@ -6,7 +6,6 @@ end
 --      and should be called remotely.
 --      Remote call can't see local values, so don't make them local !!!
 addrbook_add_recipient_old = nil
-addrbook_get_old = nil
 addrbook_put_old = nil
 addrbook_delete_old = nil
 
@@ -20,39 +19,33 @@ local function addrbook_get_uid(userid, ...)
     return box.unpack('i', userid)
 end
 
-local function set_handlers()
+function addrbook_enable_resharding()
     addrbook_add_recipient_old = addrbook_add_recipient
-    addrbook_get_old = addrbook_get
     addrbook_put_old = addrbook_put
     addrbook_delete_old = addrbook_delete
 
     addrbook_add_recipient = resharding.invoke(addrbook_add_recipient_old, addrbook_get_uid, 'addrbook_add_recipient_old')
-    addrbook_get = resharding.invoke(addrbook_get_old, addrbook_get_uid, 'addrbook_get_old')
     addrbook_put = resharding.invoke(addrbook_put_old, addrbook_get_uid, 'addrbook_put_old')
     addrbook_delete = resharding.invoke(addrbook_delete_old, addrbook_get_uid, 'addrbook_delete_old')
 end
 
 -- Restore old addrbook handlers
-function addrbook_restore_shard()
-
+function addrbook_disable_resharding()
     if addrbook_add_recipient_old == nil or
             addrbook_add_recipient_old == nil or
-            addrbook_get_old == nil or
             addrbook_put_old == nil then
         error("Can't restore shard configuration! Handlers are possibly corrupted. Restart tarantool in this case")
     end
 
     addrbook_add_recipient = addrbook_add_recipient_old
-    addrbook_get = addrbook_get_old
     addrbook_put = addrbook_put_old
     addrbook_delete = addrbook_delete_old
 
     addrbook_add_recipient_old = nil
-    addrbook_get_old = nil
     addrbook_put_old = nil
     addrbook_delete_old = nil
 
-    log_info("Addrbook restored!")
+    print("Addrbook restored!")
 end
 
 -- Function get a table with following fields:
@@ -77,7 +70,6 @@ function addrbook_set_master_configuration(conf)
     end
 
     resharding.set_master_configuration(conf)
-    set_handlers()
 end
 
 --
@@ -103,7 +95,6 @@ function addrbook_set_slave_configuration(conf)
     end
 
     resharding.set_slave_configuration(conf)
-    set_handlers()
 end
 
 --

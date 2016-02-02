@@ -49,7 +49,7 @@ local function calculate_shard_number(key)
         error("Unexpected return from perl_crc32 for key " .. key .. " (nil)")
     end
 
-    return crc32 % MAX_SHARD_INDEX
+    return crc32 % MAX_SHARD_INDEX + 1
 end
 
 function __resharding_remote_function_call(function_name, ...)
@@ -428,7 +428,7 @@ local function check_slave_shard(space_no, index_no, key_cb, index_cb, master_ho
         end
 
         local shard_no = calculate_shard_number(key)
-        if shard_no >= i_begin and shard_no < i_end then
+        if shard_no >= i_begin and shard_no <= i_end then
             -- XXX: No timeout! function should be called by hands
             local remote_data = conn:select(space_no, index_no, index_cb(row:unpack()))
             rows_count = rows_count + 1
@@ -527,15 +527,6 @@ function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep
         extra_args = { shards_configuration.host, shards_configuration.port, shards_configuration.i_begin, shards_configuration.i_end }
     end
 
-    if on_finish ~= nil then
-        local real_func = func
-        func = function (...)
-            real_func(...)
-            log_info("Shard checking complete!")
-            on_finish()
-        end
-    end
-
     if check_shard_fiber then
         if box.fiber.status(check_shard_fiber) ~= 'dead' then
             error("Can't start check_shard: fiber is already running, status: " .. box.fiber.status(check_shard_fiber) .. ", id: " .. box.fiber.id(check_shard_fiber))
@@ -548,6 +539,8 @@ function check_shard(space_no, index_no, key_cb, index_cb, rows_per_sleep, sleep
             -- main function to be called
             local res = func(...)
             log_info("Shard cheking complete")
+
+            check_shard_fiber = nil
             if on_finish ~= nil then
                 -- Needed, for example, to start another shace check
                 on_finish()
@@ -605,12 +598,24 @@ local function cleanup_shard_impl(space_no, index_no, key_cb, index_cb, rows_per
             log_info(last_perc .. "% rows checked...")
         end
 
-        local shard = get_shard(key)
+        local shard = 1
+        if shards_configuration.stype == "master" then
+            shard = get_shard(key)
+        else
+            local shard_id = calculate_shard_number(key)
+            if shard_id >= shards_configuration.i_begin and shard_id <= shards_configuration.i_end then
+                -- key should stay on current shard
+                shard = nil
+            end
+        end
+
         if shard ~= nil then
             rows_removed = rows_removed + 1
-            log_trace("Trying to delete row " .. box.cjson.encode({ row:unpack() }))
+            if not shards_configuration.dryrun then
+                log_trace("Trying to delete row " .. box.cjson.encode({ row:unpack() }))
 
-            box.delete(space_no, index_cb(row:unpack()))
+                box.delete(space_no, index_cb(row:unpack()))
+            end
         end
     end
 
@@ -649,6 +654,12 @@ function cleanup_shard(message, space_no, index_no, key_cb, index_cb, rows_per_s
         error('You are not sure you should cleanup shard! Type "' .. exp_msg .. '" (as argument) if it is not')
     end
 
+    if shards_configuration.dryrun then
+        log_info("DryRun is ENABLED. Nothing will be really removed")
+    else
+        log_info("DryRun is DISABLED. Shard will be cleaned up")
+    end
+
     -- key_cb will be called for each row => sleep in it
     if cleanup_shard_fiber then
         if box.fiber.status(cleanup_shard_fiber) ~= 'dead' then
@@ -680,8 +691,13 @@ function cleanup_shard(message, space_no, index_no, key_cb, index_cb, rows_per_s
                 end,
                 index_cb)
                 rows_removed_total = rows_removed_total + rows_removed
+
+                if shards_configuration.dryrun then
+                    break
+                end
         until rows_removed == 0
 
+        cleanup_shard_fiber = nil
         if on_finish then
             -- For expample, restart cleanup for the next space
             on_finish()
