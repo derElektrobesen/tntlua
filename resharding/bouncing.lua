@@ -48,6 +48,7 @@ local function set_bouncing_configuration_nocheck(first_index, last_index, remot
 
     print("Configuration reloaded")
     print("\tDryrun mode is " .. (opts.test_key ~= nil and "ENABLED" or "DISABLED"))
+    print()
 
     for k, v in pairs(conf) do
         print("\t" .. k .. " = " .. v)
@@ -74,32 +75,7 @@ local function call_remotely(func_name, args)
         conf.conn = establish_connection(conf.remote_shard_addr, conf.remote_shard_port)
     end
 
-    local ret = conf.conn:timeout(conf.netbox_timeout):call('bouncing.__remote_function_call', func_name, unpack(args))
-    if ret == nil then
-        error("Can't call " .. func_name .. " (timeout happens)")
-    end
-
-    local json = ret:unpack()
-
-    if type(json) ~= 'string' then
-        error("Can't call remote function! Invalid return value!")
-    end
-
-    ret = box.cjson.decode(json)
-    if ret == nil then
-        error("Invalid json found in response: " .. json)
-    end
-
-    local resp = {}
-    for _, v in ipairs(ret) do
-        -- XXX: Any table in response will be treated as a tuple
-        if type(v) == 'table' then
-            v = box.tuple.new(v)
-        end
-        table.insert(resp, v)
-    end
-
-    return unpack(resp)
+    return conf.conn:timeout(conf.netbox_timeout):call('bouncing.__remote_function_call', func_name, unpack(args))
 end
 
 local function call_locally(func_name, ...)
@@ -198,22 +174,6 @@ bouncing = {
     -- but nil can be effective return value for a function.
     -- XXX: function should be in global scope
     __remote_function_call = function (func_name, ...)
-        -- The box.net.box.call is using the binary protocol to pack procedure arguments, and the binary protocol is type agnostic, so it's
-        -- recommended to pass all arguments of remote stored procedure calls as strings.
-        -- We should pack response into a json to pass it to client.
-        local loc_ret = { call_locally(func_name, ...) }
-        local ret = {}
-
-        for _, v in ipairs(loc_ret) do
-            if type(v) == 'userdata' then
-                table.insert(ret, { v:unpack() }) -- we can't send tarantool tuple as is
-            elseif type(v) == 'table' then
-                error("Tables are not supported in response!")
-            else
-                table.insert(ret, v)
-            end
-        end
-
-        return box.cjson.encode(ret)
+        return { call_locally(func_name, ...) }
     end,
 }
