@@ -19,6 +19,12 @@ end
 
 function addrbook_enable_resharding()
     for _, v in ipairs(functions_names) do
+        if _G[v .. '_old'] ~= nil then
+            error('Can\'t enable configuration! Handlers are already set. Disable resharding first.')
+        end
+    end
+
+    for _, v in ipairs(functions_names) do
         _G[v .. '_old'] = _G[v]
         _G[v] = resharding.wrap(v .. '_old', addrbook_get_uid)
     end
