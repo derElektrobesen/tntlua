@@ -320,7 +320,9 @@ resharding = {
                 print(rows_processed .. " rows processed. Sleep " .. _opts.sleep_time .. " seconds...")
                 box.fiber.sleep(_opts.sleep_time)
             end
-            return old_decoder(key)
+
+            -- if decoder is not set, return key as is. This is correct for stringified keys.
+            return old_decoder and old_decoder(key) or key
         end
 
         conf.cleanup_shard_fiber = box.fiber.wrap(function ()
