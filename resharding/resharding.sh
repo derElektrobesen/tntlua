@@ -11,11 +11,11 @@ test_uid=1000060304  # pavel@mail.ru (dev user)
 #test_uid_for_remote_shard=602520557 # p.berezhnoy@corp.mail.ru
 #test_uid_for_local_shard=602520557 # p.berezhnoy@corp.mail.ru
 
-master_host='127.0.0.1'
+master_host='5.61.232.50'
 master_port=30071
 master_admin_port=32071
 
-replica_host='127.0.0.1'
+replica_host='5.61.232.50'
 replica_port=30072
 replica_admin_port=32072
 
@@ -394,3 +394,8 @@ replica_disable_replication
 ###########################################################################
 # Replication should work here. Possibly we should start reloading of caprons here
 ###########################################################################
+
+if [ $TEST_MODE -eq 1 ]; then
+    # XXX: Remove me !!!
+    /etc/init.d/capron-fe restart
+fi
