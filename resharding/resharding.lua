@@ -95,9 +95,12 @@ local function process_request(func_name, key, ...)
         return call_with_conn(conn, func_name, ...)
     end
 
-    local shard_no = calculate_shard_number(key)
+    local shard_no = -1
+    if conf.test_key == nil then
+        shard_no = calculate_shard_number(key)
+    end
 
-    if shard_no < conf.first_index or shard_no > conf.last_index then
+    if shard_no == -1 or shard_no < conf.first_index or shard_no > conf.last_index then
         -- send request on remote shard
         if conf.conn == nil then
             conf.conn = establish_connection(conf.remote_shard_addr, conf.remote_shard_port)
