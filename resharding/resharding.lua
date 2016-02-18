@@ -149,7 +149,7 @@ local function cleanup_shard_impl(space_no, index_no, key_field_no, opts)
             -- Key should be stored on remote shard => delete it
             rows_removed = rows_removed + 1
             if opts.dryrun == false then
-                box.delete(space_no, index_no, opts.index_decoder(row))
+                box.delete(space_no, opts.index_decoder(row))
             end
         end
     end

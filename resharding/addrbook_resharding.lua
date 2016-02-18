@@ -48,13 +48,15 @@ end
 
 -- manually pass @is_dryrun == false to disable dryrun mode
 function addrbook_cleanup_shard(space_no, is_dryrun)
-    local index_decoder = (
-        (space_no == 1)
-            and function (tuple)
-                return tuple[0], tuple[1]
-            end
-            or nil
-        )
+    local index_decoder = function (tuple)
+        return box.unpack('i', tuple[0])
+    end
+
+    if space_no == 1 then
+        index_decoder = function (tuple)
+            return box.unpack('i', tuple[0]), tuple[1]
+        end
+    end
 
     resharding.cleanup(space_no, 0, 0, {
         key_decoder = function (key) return box.unpack('i', key) end,
