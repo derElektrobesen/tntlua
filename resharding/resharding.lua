@@ -332,5 +332,8 @@ resharding = {
         conf.cleanup_shard_fiber = box.fiber.wrap(function ()
             run_cleanup_nocheck(space, index, key_field_no, _opts)
         end)
+
+        conf.cleanup_shard_fiber:name("cleanup_shard_fiber_space_" .. space)
+        print("Started fiber with id " .. conf.cleanup_shard_fiber:id() .. ", name == " .. conf.cleanup_shard_fiber:name())
     end,
 }
