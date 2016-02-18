@@ -47,7 +47,8 @@ function addrbook_disable_resharding()
 end
 
 -- manually pass @is_dryrun == false to disable dryrun mode
-function addrbook_cleanup_shard(space_no, is_dryrun, rows_per_sleep)
+-- conf is { rows_per_sleep = 10000 (default), sleep_time = 0.1 }
+function addrbook_cleanup_shard(space_no, conf, is_dryrun)
     local index_decoder = function (tuple)
         return box.unpack('i', tuple[0])
     end
@@ -58,10 +59,15 @@ function addrbook_cleanup_shard(space_no, is_dryrun, rows_per_sleep)
         end
     end
 
+    if conf == nil then
+        conf = {}
+    end
+
     resharding.cleanup(space_no, 0, 0, {
         key_decoder = function (key) return box.unpack('i', key) end,
         index_decoder = index_decoder,
         dryrun = is_dryrun,
-        rows_per_sleep = rows_per_sleep,
+        rows_per_sleep = conf.rows_per_sleep,
+        sleep_time = conf.sleep_time,
     })
 end
