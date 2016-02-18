@@ -24,7 +24,7 @@ function addrbook_enable_resharding()
 
     for _, v in ipairs(functions_names) do
         _G[v .. '_old'] = _G[v]
-        _G[v] = resharding.wrap(v .. '_old', addrbook_get_uid)
+        _G[v] = resharding.wrap(v .. '_old', v, addrbook_get_uid)
     end
 
     print("Addrbook resharding enabled!")

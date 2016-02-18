@@ -91,8 +91,10 @@ local function calculate_shard_number(key)
     return crc32 % MAX_SHARD_INDEX + 1
 end
 
-local function process_request(func_name, key, ...)
+local function process_request(local_func_name, remote_func_name, key, ...)
     local conn = box.net.self
+    local func_name = local_func_name
+
     if resharding_configuration.test_key ~= nil and key ~= resharding_configuration.test_key then
         return call_with_conn(conn, func_name, ...)
     end
@@ -107,25 +109,30 @@ local function process_request(func_name, key, ...)
         if resharding_configuration.conn == nil then
             resharding_configuration.conn = establish_connection(resharding_configuration.remote_shard_addr, resharding_configuration.remote_shard_port)
         end
+
         conn = resharding_configuration.conn
+        func_name = remote_func_name
+
+        print("Trying to call " .. func_name .. " remotely, key " .. key)
     end
 
     return call_with_conn(conn, func_name, ...)
 end
 
--- @func_name
+-- @local_func_name
+-- @remote_func_name
 --  This is a name of the function to be called locally or remotely
 -- @key_finder
 --  This callback should return unpacked key value from a current function arguments
-local function wrap_nocheck(func_name, key_finder)
-    print("Wrapper for '" .. func_name .. "' enabled")
+local function wrap_nocheck(local_func_name, remote_func_name, key_finder)
+    print("Wrapper for '" .. local_func_name .. "' enabled, remote name is " .. remote_func_name)
     return function (...)
         local key = key_finder(...)
         if key == nil then
-            error("Invalid key for " .. func_name .. "(" .. box.cjson.encode({ ... }) .. ")")
+            error("Invalid key for " .. local_func_name .. "(" .. box.cjson.encode({ ... }) .. ")")
         end
 
-        return process_request(func_name, key, ...)
+        return process_request(local_func_name, remote_func_name, key, ...)
     end
 end
 
@@ -221,12 +228,14 @@ resharding = {
         set_resharding_configuration_nocheck(first_index, last_index, remote_shard_addr, remote_shard_port, _opts)
     end,
 
-    -- @func_name
+    -- @local_func_name
+    -- @remote_func_name
     --  This is a name of the function to be called locally or remotely
     -- @key_finder
     --  This callback should return unpacked key value from a current function arguments
-    wrap = function(func_name, key_finder)
-        if func_name == nil or type(func_name) ~= 'string' or func_name == "" or _G[func_name] == nil
+    wrap = function(local_func_name, remote_func_name, key_finder)
+        if local_func_name == nil or type(local_func_name) ~= 'string' or local_func_name == "" or _G[local_func_name] == nil
+                or remote_func_name == nil or type(remote_func_name) ~= 'string' or remote_func_name == "" or _G[remote_func_name] == nil
                 or key_finder == nil or type(key_finder) ~= 'function' then
             error("Invalid wrapper options!")
         end
@@ -234,11 +243,11 @@ resharding = {
         if resharding_configuration.first_index == nil then
             print("ERROR! Set resharding configuration first! Old func is used")
             return function (...)
-                return resharding.__remote_function_call(func_name, ...)
+                return resharding.__remote_function_call(remote_func_name, ...)
             end
         end
 
-        return wrap_nocheck(func_name, key_finder)
+        return wrap_nocheck(local_func_name, remote_func_name, key_finder)
     end,
 
     -- This function will be called by remote tarantool.
