@@ -34,7 +34,7 @@ end
 function addrbook_disable_resharding()
     for _, v in ipairs(functions_names) do
         if _G[v .. '_old'] == nil then
-            error('Can\'t restore shard configuration! Resharding is disabled or handlers are corrupted. Restart tarantool in this case')
+            error('Can\'t restore shard configuration! Resharding is already disabled or handlers are corrupted. Restart tarantool in this case')
         end
     end
 

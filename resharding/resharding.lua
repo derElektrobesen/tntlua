@@ -10,33 +10,35 @@ end
 local MAX_SHARD_INDEX = 1024        -- constant from capron
 local DEFAULT_NETBOX_TIMEOUT = 1    -- in seconds
 
-local conf = {
-    -- This options enables dryrun mode.
-    -- If not nil, only records with equal key will be processed.
-    test_key = nil,
+if resharding_configuration == nil then
+    resharding_configuration = {
+        -- This options enables dryrun mode.
+        -- If not nil, only records with equal key will be processed.
+        test_key = nil,
 
-    -- Indexes, used to understand where we should store current tuple
-    -- XXX: for configuration
-    --  +-------+--------------------+
-    --  | db_id | db_addr            |
-    --  +-------+--------------------+
-    --  |  1024 | 11.80.232.50:30071 |
-    --  +-------+--------------------+
-    --  first_index == 1
-    --  last_index == 1024
-    first_index = nil,
-    last_index = nil,
+        -- Indexes, used to understand where we should store current tuple
+        -- XXX: for configuration
+        --  +-------+--------------------+
+        --  | db_id | db_addr            |
+        --  +-------+--------------------+
+        --  |  1024 | 11.80.232.50:30071 |
+        --  +-------+--------------------+
+        --  first_index == 1
+        --  last_index == 1024
+        first_index = nil,
+        last_index = nil,
 
-    -- Records with unsuitable keys will be sent on this tarantool
-    remote_shard_addr = nil,
-    remote_shard_port = nil,
+        -- Records with unsuitable keys will be sent on this tarantool
+        remote_shard_addr = nil,
+        remote_shard_port = nil,
 
-    -- Timeout for box.net.box (in seconds, float numbers are supported)
-    netbox_timeout = nil,
-}
+        -- Timeout for box.net.box (in seconds, float numbers are supported)
+        netbox_timeout = nil,
+    }
+end
 
 local function set_resharding_configuration_nocheck(first_index, last_index, remote_shard_addr, remote_shard_port, opts)
-    conf = {
+    resharding_configuration = {
         first_index = first_index,
         last_index = last_index,
         remote_shard_addr = remote_shard_addr,
@@ -50,7 +52,7 @@ local function set_resharding_configuration_nocheck(first_index, last_index, rem
     print("\tDryrun mode is " .. (opts.test_key ~= nil and "ENABLED" or "DISABLED"))
     print(" ") -- empty line
 
-    for k, v in pairs(conf) do
+    for k, v in pairs(resharding_configuration) do
         print("\t" .. k .. " = " .. v)
     end
 end
@@ -67,7 +69,7 @@ local function establish_connection(host, port)
 end
 
 local function call_with_conn(conn, func_name, ...)
-    local ret = { conn:timeout(conf.netbox_timeout):call('resharding.__remote_function_call', func_name, ...) }
+    local ret = { conn:timeout(resharding_configuration.netbox_timeout):call('resharding.__remote_function_call', func_name, ...) }
     if ret[1] == nil then
         error("Request timed out!")
     end
@@ -91,21 +93,21 @@ end
 
 local function process_request(func_name, key, ...)
     local conn = box.net.self
-    if conf.test_key ~= nil and key ~= conf.test_key then
+    if resharding_configuration.test_key ~= nil and key ~= resharding_configuration.test_key then
         return call_with_conn(conn, func_name, ...)
     end
 
     local shard_no = -1
-    if conf.test_key == nil then
+    if resharding_configuration.test_key == nil then
         shard_no = calculate_shard_number(key)
     end
 
-    if shard_no == -1 or shard_no < conf.first_index or shard_no > conf.last_index then
+    if shard_no == -1 or shard_no < resharding_configuration.first_index or shard_no > resharding_configuration.last_index then
         -- send request on remote shard
-        if conf.conn == nil then
-            conf.conn = establish_connection(conf.remote_shard_addr, conf.remote_shard_port)
+        if resharding_configuration.conn == nil then
+            resharding_configuration.conn = establish_connection(resharding_configuration.remote_shard_addr, resharding_configuration.remote_shard_port)
         end
-        conn = conf.conn
+        conn = resharding_configuration.conn
     end
 
     return call_with_conn(conn, func_name, ...)
@@ -145,7 +147,7 @@ local function cleanup_shard_impl(space_no, index_no, key_field_no, opts)
         end
 
         local shard_no = calculate_shard_number(key)
-        if shard_no < conf.first_index or shard_no > conf.last_index then
+        if shard_no < resharding_configuration.first_index or shard_no > resharding_configuration.last_index then
             -- Key should be stored on remote shard => delete it
             rows_removed = rows_removed + 1
             print("Trying to remove tuple with key " .. key .. " (hash_func == " .. shard_no .. ")")
@@ -179,7 +181,7 @@ local function run_cleanup_nocheck(space_no, index_no, key_field_no, opts)
         end
     until rows_removed == 0
 
-    conf.cleanup_shard_fiber = nil
+    resharding_configuration.cleanup_shard_fiber = nil
 
     print("Space " .. space_no .. ", index " .. index_no .. " was cleanuped successfully. Results:")
     print(n_rows .. " rows processed (" .. iter_no .. " iterations)")
@@ -229,7 +231,7 @@ resharding = {
             error("Invalid wrapper options!")
         end
 
-        if conf.first_index == nil then
+        if resharding_configuration.first_index == nil then
             print("ERROR! Set resharding configuration first! Old func is used")
             return function (...)
                 return resharding.__remote_function_call(func_name, ...)
@@ -266,11 +268,11 @@ resharding = {
     --          If not set, value with index @key_field_no will be used
     --
     cleanup = function (space, index, key_field_no, opts)
-        if conf.first_index == nil then
+        if resharding_configuration.first_index == nil then
             error("Set resharding configuration first!")
         end
 
-        if conf.cleanup_shard_fiber ~= nil and box.fiber.status(conf.cleanup_shard_fiber) ~= 'dead' then
+        if resharding_configuration.cleanup_shard_fiber ~= nil and box.fiber.status(resharding_configuration.cleanup_shard_fiber) ~= 'dead' then
             error("Can't start cleanup_shard: fiber is already running, status: " .. box.fiber.status(cleanup_shard_fiber)
                 .. ", id: " .. box.fiber.id(cleanup_shard_fiber))
         end
@@ -329,11 +331,12 @@ resharding = {
             return old_decoder and old_decoder(key) or key
         end
 
-        conf.cleanup_shard_fiber = box.fiber.wrap(function ()
+        resharding_configuration.cleanup_shard_fiber = box.fiber.wrap(function ()
             run_cleanup_nocheck(space, index, key_field_no, _opts)
         end)
 
-        conf.cleanup_shard_fiber:name("cleanup_shard_fiber_space_" .. space)
-        print("Started fiber with id " .. conf.cleanup_shard_fiber:id() .. ", name == " .. conf.cleanup_shard_fiber:name())
+        resharding_configuration.cleanup_shard_fiber:name("cleanup_shard_fiber_space_" .. space)
+        print("Started fiber with id " .. resharding_configuration.cleanup_shard_fiber:id()
+            .. ", name == " .. resharding_configuration.cleanup_shard_fiber:name())
     end,
 }
