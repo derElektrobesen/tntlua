@@ -148,6 +148,7 @@ local function cleanup_shard_impl(space_no, index_no, key_field_no, opts)
         if shard_no < conf.first_index or shard_no > conf.last_index then
             -- Key should be stored on remote shard => delete it
             rows_removed = rows_removed + 1
+            print("Trying to remove tuple with key " .. key .. " (hash_func == " .. shard_no .. ")")
             if opts.dryrun == false then
                 box.delete(space_no, opts.index_decoder(row))
             end
