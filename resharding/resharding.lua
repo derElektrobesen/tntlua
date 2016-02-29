@@ -88,7 +88,7 @@ local function calculate_shard_number(key)
         error("Unexpected return from perl_crc32 for key " .. key .. " (nil)")
     end
 
-    return crc32 % MAX_SHARD_INDEX + 1
+    return crc32 % MAX_SHARD_INDEX
 end
 
 local function process_request(local_func_name, remote_func_name, key, ...)
@@ -104,7 +104,7 @@ local function process_request(local_func_name, remote_func_name, key, ...)
         shard_no = calculate_shard_number(key)
     end
 
-    if shard_no == -1 or shard_no < resharding_configuration.first_index or shard_no > resharding_configuration.last_index then
+    if shard_no == -1 or shard_no < resharding_configuration.first_index or shard_no >= resharding_configuration.last_index then
         -- send request on remote shard
         if resharding_configuration.conn == nil then
             resharding_configuration.conn = establish_connection(resharding_configuration.remote_shard_addr, resharding_configuration.remote_shard_port)
@@ -154,7 +154,7 @@ local function cleanup_shard_impl(space_no, index_no, key_field_no, opts)
         end
 
         local shard_no = calculate_shard_number(key)
-        if shard_no < resharding_configuration.first_index or shard_no > resharding_configuration.last_index then
+        if shard_no < resharding_configuration.first_index or shard_no >= resharding_configuration.last_index then
             -- Key should be stored on remote shard => delete it
             rows_removed = rows_removed + 1
             print("Trying to remove tuple with key " .. key .. " (hash_func == " .. shard_no .. ")")
@@ -202,7 +202,7 @@ resharding = {
     --      netbox_timeout
     --      test_key (this enables dryrun mode)
     set_configuration = function (first_index, last_index, remote_shard_addr, remote_shard_port, opts)
-        if first_index == nil or first_index <= 0 or first_index > MAX_SHARD_INDEX
+        if first_index == nil or first_index < 0 or first_index > MAX_SHARD_INDEX
                 or last_index == nil or last_index < 0 or last_index > MAX_SHARD_INDEX or first_index >= last_index
                 or remote_shard_addr == nil or remote_shard_addr == ""
                 or remote_shard_port == nil or type(remote_shard_port) ~= 'number' then

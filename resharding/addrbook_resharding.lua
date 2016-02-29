@@ -1,11 +1,26 @@
 dofile('resharding.lua')
 
+function addrbook_add_recipient_with_log(user_id, rcp_email, rcp_name, timestamp)
+    print("addrbook_add_recipient: trying to modify " .. user_id)
+    return addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
+end
+
+function addrbook_put_with_log(user_id, book)
+    print("addrbook_put: trying to modify " .. user_id)
+    return addrbook_put(user_id, book)
+end
+
+function addrbook_delete_with_log(user_id)
+    print("addrbook_delete: trying to modify " .. user_id)
+    return addrbook_delete(user_id)
+end
+
 local functions_names = {
-    'addrbook_add_recipient',
-    'addrbook_get_recipients',
     'addrbook_get',
-    'addrbook_put',
-    'addrbook_delete',
+    'addrbook_get_recipients',
+    'addrbook_put_with_log',
+    'addrbook_delete_with_log',
+    'addrbook_add_recipient_with_log',
 }
 
 -- This function is used to get userid from args, passed into addrbook_* functions.
