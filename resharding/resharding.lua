@@ -113,7 +113,9 @@ local function process_request(local_func_name, remote_func_name, key, ...)
         conn = resharding_configuration.conn
         func_name = remote_func_name
 
-        print("Trying to call " .. func_name .. " remotely, key " .. key)
+        if (shard_no == -1) or ((remote_func_name ~= 'addrbook_get') and (remote_func_name ~= 'addrbook_get_recipients')) then
+            print("Trying to call " .. func_name .. " remotely, key " .. key)
+        end
     end
 
     return call_with_conn(conn, func_name, ...)
