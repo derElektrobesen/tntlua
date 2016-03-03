@@ -14,7 +14,7 @@ if resharding_configuration == nil then
     resharding_configuration = {
         -- This options enables dryrun mode.
         -- If not nil, only records with equal key will be processed.
-        test_key = nil,
+        dryrun = true,
 
         -- Indexes, used to understand where we should store current tuple
         -- XXX: for configuration
@@ -35,6 +35,9 @@ if resharding_configuration == nil then
         -- Timeout for box.net.box (in seconds, float numbers are supported)
         netbox_timeout = nil,
     }
+else
+    print("DRYRUN mode is force ENABLED. Call 'resharding.set_configuration' to disable it")
+    resharding_configuration.dryrun = true
 end
 
 local function set_resharding_configuration_nocheck(first_index, last_index, remote_shard_addr, remote_shard_port, opts)
@@ -44,12 +47,16 @@ local function set_resharding_configuration_nocheck(first_index, last_index, rem
         remote_shard_addr = remote_shard_addr,
         remote_shard_port = remote_shard_port,
 
-        test_key = opts.test_key,
+        dryrun = opts.dryrun,
         netbox_timeout = opts.netbox_timeout
     }
 
+    if resharding_configuration.dryrun ~= false then
+        resharding_configuration.dryrun = true
+    end
+
     print("Configuration reloaded")
-    print("\tDryrun mode is " .. (opts.test_key ~= nil and "ENABLED" or "DISABLED"))
+    print("\tDryrun mode is " .. (opts.dryrun and "ENABLED" or "DISABLED"))
     print(" ") -- empty line
 
     for k, v in pairs(resharding_configuration) do
@@ -95,16 +102,9 @@ local function process_request(local_func_name, remote_func_name, key, args, on_
     local conn = box.net.self
     local func_name = local_func_name
 
-    if resharding_configuration.test_key ~= nil and key ~= resharding_configuration.test_key then
-        return call_with_conn(conn, func_name, args)
-    end
+    local shard_no = calculate_shard_number(key)
 
-    local shard_no = -1
-    if resharding_configuration.test_key == nil then
-        shard_no = calculate_shard_number(key)
-    end
-
-    if shard_no == -1 or (shard_no >= resharding_configuration.first_index and shard_no < resharding_configuration.last_index) then
+    if shard_no >= resharding_configuration.first_index and shard_no < resharding_configuration.last_index then
         -- send request on remote shard
         if resharding_configuration.conn == nil then
             resharding_configuration.conn = establish_connection(resharding_configuration.remote_shard_addr, resharding_configuration.remote_shard_port)
@@ -120,6 +120,12 @@ local function process_request(local_func_name, remote_func_name, key, args, on_
         on_send_locally()
     end
 
+    if resharding_configuration.dryrun ~= false then
+        -- Store record only locally
+        conn = box.net.self
+    end
+
+    -- This function will write changes on local or remote shard
     return call_with_conn(conn, func_name, args)
 end
 
@@ -204,7 +210,7 @@ end
 resharding = {
     -- @opts contains a table with following options (can be nil):
     --      netbox_timeout
-    --      test_key (this enables dryrun mode)
+    --      dry_run (this enables dryrun mode)
     set_configuration = function (first_index, last_index, remote_shard_addr, remote_shard_port, opts)
         if first_index == nil or first_index < 0 or first_index > MAX_SHARD_INDEX
                 or last_index == nil or last_index < 0 or last_index > MAX_SHARD_INDEX or first_index >= last_index
@@ -215,7 +221,7 @@ resharding = {
 
         local _opts = {
             netbox_timeout = DEFAULT_NETBOX_TIMEOUT,
-            test_key = nil,
+            dryrun = true,
         }
 
         if opts ~= nil then
@@ -224,8 +230,8 @@ resharding = {
             end
             _opts.netbox_timeout = opts.netbox_timeout
 
-            if opts.test_key ~= nil then
-                _opts.test_key = opts.test_key
+            if opts.dryrun ~= nil && opts.dryrun == false then
+                _opts.dryrun = false
             end
         end
 

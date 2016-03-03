@@ -25,61 +25,93 @@
 -- space[1].index[0].key_field[1].fieldno = 1
 -- space[1].index[0].key_field[1].type = "STR"
 
+dofile('resharding.lua')
+
+if resharding_configuration.first_index == nil or resharding_configuration.last_index == nil then
+	error("Call resharding.set_configuration first !!!!")
+end
+
+addrbook_log_ro_requests = false
+addrbook_log_local_requests = false
+
 function addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
 	local key = unpack('i', user_id)
 
+	local local_req_log = nil
+	if addrbook_log_local_requests then
+		local_req_log = function print("Trying to call addrbook_add_recipient locally, uid == " .. key) end
+	end
+
 	resharding.process_request('addrbook_add_recipient_old', 'addrbook_add_recipient',
 		key, { user_id, rcp_email, rcp_name, timestamp },
-
-		function () print("Trying to call addrbook_add_recipient locally, uid == " .. key) end,
-		--nil, -- uncomment to disable local requests logging
-
+		local_req_log,
 		function () print("Trying to call addrbook_add_recipient remotely, uid == " .. key) end
-		-- nil
 	)
 end
 
 function addrbook_get_recipients(user_id)
 	local key = unpack('i', user_id)
 
-	resharding.process_request('addrbook_get_recipients_old', 'addrbook_get_recipients', key, { user_id })
+	local local_req_log = nil
+	local remote_req_log = nil
+
+	if addrbook_log_ro_requests then
+		remote_req_log = function () print("Trying to call addrbook_get_recipients remotely, uid == " .. key) end
+		if addrbook_log_local_requests then
+			local_req_log = function () print("Trying to call addrbook_get_recipients locally, uid == " .. key) end
+		end
+	end
+
+	resharding.process_request('addrbook_get_recipients_old', 'addrbook_get_recipients', key, { user_id }, local_req_log, remote_req_log)
 end
 
 function addrbook_get(user_id)
 	local key = unpack('i', user_id)
 
-	resharding.process_request('addrbook_get_old', 'addrbook_get', key, { user_id });
+	local local_req_log = nil
+	local remote_req_log = nil
+
+	if addrbook_log_ro_requests then
+		remote_req_log = function () print("Trying to call addrbook_get remotely, uid == " .. key) end
+		if addrbook_log_local_requests then
+			local_req_log = function () print("Trying to call addrbook_get locally, uid == " .. key) end
+		end
+	end
+
+	resharding.process_request('addrbook_get_old', 'addrbook_get', key, { user_id }, local_req_log, remote_req_log);
 end
 
 function addrbook_put(user_id, book)
 	local key = unpack('i', user_id)
 
+	local local_req_log = nil
+	if addrbook_log_local_requests then
+		local_req_log = function print("Trying to call addrbook_put locally, uid == " .. key) end
+	end
+
 	resharding.process_request('addrbook_put_old', 'addrbook_put',
-		key, { user_id, book },
-
-		function () print("Trying to call addrbook_put locally, uid == " .. key) end,
-		--nil,
-
+		key, { user_id, book }, local_req_log,
 		function () print("Trying to call addrbook_put remotely, uid == " .. key) end
-		-- nil
 	)
 end
 
 function addrbook_delete(user_id)
 	local key = unpack('i', user_id)
 
+	local local_req_log = nil
+	if addrbook_log_local_requests then
+		local_req_log = function print("Trying to call addrbook_delete locally, uid == " .. key) end
+	end
+
 	resharding.process_request('addrbook_delete_old', 'addrbook_delete',
-		key, { user_id },
-
-		function () print("Trying to call addrbook_delete locally, uid == " .. key) end,
-		--nil,
-
+		key, { user_id }, local_req_log,
 		function () print("Trying to call addrbook_delete remotely, uid == " .. key) end
-		-- nil
 	)
 end
 
-------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
 
 function addrbook_add_recipient_old(user_id, rcp_email, rcp_name, timestamp)
 	user_id = box.unpack('i', user_id)
