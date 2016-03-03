@@ -35,9 +35,6 @@ if resharding_configuration == nil then
         -- Timeout for box.net.box (in seconds, float numbers are supported)
         netbox_timeout = nil,
     }
-else
-    print("DRYRUN mode is force ENABLED. Call 'resharding.set_configuration' to disable it")
-    resharding_configuration.dryrun = true
 end
 
 local function set_resharding_configuration_nocheck(first_index, last_index, remote_shard_addr, remote_shard_port, opts)
@@ -60,7 +57,7 @@ local function set_resharding_configuration_nocheck(first_index, last_index, rem
     print(" ") -- empty line
 
     for k, v in pairs(resharding_configuration) do
-        print("\t" .. k .. " = " .. v)
+        print("\t" .. k .. " = " .. tostring(v))
     end
 end
 
@@ -123,6 +120,7 @@ local function process_request(local_func_name, remote_func_name, key, args, on_
     if resharding_configuration.dryrun ~= false then
         -- Store record only locally
         conn = box.net.self
+        func_name = local_func_name
     end
 
     -- This function will write changes on local or remote shard
@@ -230,7 +228,7 @@ resharding = {
             end
             _opts.netbox_timeout = opts.netbox_timeout
 
-            if opts.dryrun ~= nil && opts.dryrun == false then
+            if opts.dryrun ~= nil and opts.dryrun == false then
                 _opts.dryrun = false
             end
         end

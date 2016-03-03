@@ -35,11 +35,11 @@ addrbook_log_ro_requests = false
 addrbook_log_local_requests = false
 
 function addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
-	local key = unpack('i', user_id)
+	local key = box.unpack('i', user_id)
 
 	local local_req_log = nil
 	if addrbook_log_local_requests then
-		local_req_log = function print("Trying to call addrbook_add_recipient locally, uid == " .. key) end
+		local_req_log = function () print("Trying to call addrbook_add_recipient locally, uid == " .. key) end
 	end
 
 	resharding.process_request('addrbook_add_recipient_old', 'addrbook_add_recipient',
@@ -50,7 +50,7 @@ function addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
 end
 
 function addrbook_get_recipients(user_id)
-	local key = unpack('i', user_id)
+	local key = box.unpack('i', user_id)
 
 	local local_req_log = nil
 	local remote_req_log = nil
@@ -66,7 +66,7 @@ function addrbook_get_recipients(user_id)
 end
 
 function addrbook_get(user_id)
-	local key = unpack('i', user_id)
+	local key = box.unpack('i', user_id)
 
 	local local_req_log = nil
 	local remote_req_log = nil
@@ -82,11 +82,11 @@ function addrbook_get(user_id)
 end
 
 function addrbook_put(user_id, book)
-	local key = unpack('i', user_id)
+	local key = box.unpack('i', user_id)
 
 	local local_req_log = nil
 	if addrbook_log_local_requests then
-		local_req_log = function print("Trying to call addrbook_put locally, uid == " .. key) end
+		local_req_log = function () print("Trying to call addrbook_put locally, uid == " .. key) end
 	end
 
 	resharding.process_request('addrbook_put_old', 'addrbook_put',
@@ -96,11 +96,11 @@ function addrbook_put(user_id, book)
 end
 
 function addrbook_delete(user_id)
-	local key = unpack('i', user_id)
+	local key = box.unpack('i', user_id)
 
 	local local_req_log = nil
 	if addrbook_log_local_requests then
-		local_req_log = function print("Trying to call addrbook_delete locally, uid == " .. key) end
+		local_req_log = function () print("Trying to call addrbook_delete locally, uid == " .. key) end
 	end
 
 	resharding.process_request('addrbook_delete_old', 'addrbook_delete',
