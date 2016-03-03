@@ -68,8 +68,8 @@ local function establish_connection(host, port)
     return conn
 end
 
-local function call_with_conn(conn, func_name, ...)
-    local ret = { conn:timeout(resharding_configuration.netbox_timeout):call('resharding.__remote_function_call', func_name, ...) }
+local function call_with_conn(conn, func_name, args)
+    local ret = { conn:timeout(resharding_configuration.netbox_timeout):call('resharding.__remote_function_call', func_name, unpack(args)) }
     if ret[1] == nil then
         error("Request timed out!")
     end
@@ -91,12 +91,12 @@ local function calculate_shard_number(key)
     return crc32 % MAX_SHARD_INDEX
 end
 
-local function process_request(local_func_name, remote_func_name, key, ...)
+local function process_request(local_func_name, remote_func_name, key, args, on_send_locally, on_send_remotely)
     local conn = box.net.self
     local func_name = local_func_name
 
     if resharding_configuration.test_key ~= nil and key ~= resharding_configuration.test_key then
-        return call_with_conn(conn, func_name, ...)
+        return call_with_conn(conn, func_name, args)
     end
 
     local shard_no = -1
@@ -104,7 +104,7 @@ local function process_request(local_func_name, remote_func_name, key, ...)
         shard_no = calculate_shard_number(key)
     end
 
-    if shard_no == -1 or shard_no < resharding_configuration.first_index or shard_no >= resharding_configuration.last_index then
+    if shard_no == -1 or (shard_no >= resharding_configuration.first_index and shard_no < resharding_configuration.last_index) then
         -- send request on remote shard
         if resharding_configuration.conn == nil then
             resharding_configuration.conn = establish_connection(resharding_configuration.remote_shard_addr, resharding_configuration.remote_shard_port)
@@ -113,12 +113,14 @@ local function process_request(local_func_name, remote_func_name, key, ...)
         conn = resharding_configuration.conn
         func_name = remote_func_name
 
-        if (shard_no == -1) or ((remote_func_name ~= 'addrbook_get') and (remote_func_name ~= 'addrbook_get_recipients')) then
-            print("Trying to call " .. func_name .. " remotely, key " .. key)
+        if on_send_remotely then
+            on_send_remotely() -- We should log something here
         end
+    elseif on_send_locally then
+        on_send_locally()
     end
 
-    return call_with_conn(conn, func_name, ...)
+    return call_with_conn(conn, func_name, args)
 end
 
 -- @local_func_name
@@ -134,7 +136,7 @@ local function wrap_nocheck(local_func_name, remote_func_name, key_finder)
             error("Invalid key for " .. local_func_name .. "(" .. box.cjson.encode({ ... }) .. ")")
         end
 
-        return process_request(local_func_name, remote_func_name, key, ...)
+        return process_request(local_func_name, remote_func_name, key, { ... })
     end
 end
 
@@ -156,7 +158,7 @@ local function cleanup_shard_impl(space_no, index_no, key_field_no, opts)
         end
 
         local shard_no = calculate_shard_number(key)
-        if shard_no < resharding_configuration.first_index or shard_no >= resharding_configuration.last_index then
+        if shard_no >= resharding_configuration.first_index and shard_no < resharding_configuration.last_index then
             -- Key should be stored on remote shard => delete it
             rows_removed = rows_removed + 1
             print("Trying to remove tuple with key " .. key .. " (hash_func == " .. shard_no .. ")")
@@ -259,6 +261,8 @@ resharding = {
     __remote_function_call = function (func_name, ...)
         return { _G[func_name](...) }
     end,
+
+    process_request = process_request,
 
     --
     -- Function removes unnecessary records from current tarantool
