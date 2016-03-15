@@ -42,7 +42,7 @@ function addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
 		local_req_log = function () print("Trying to call addrbook_add_recipient locally, uid == " .. key) end
 	end
 
-	resharding.process_request('addrbook_add_recipient_old', 'addrbook_add_recipient',
+	return resharding.process_request('addrbook_add_recipient_old', 'addrbook_add_recipient',
 		key, { user_id, rcp_email, rcp_name, timestamp },
 		local_req_log,
 		function () print("Trying to call addrbook_add_recipient remotely, uid == " .. key) end
@@ -62,7 +62,7 @@ function addrbook_get_recipients(user_id)
 		end
 	end
 
-	resharding.process_request('addrbook_get_recipients_old', 'addrbook_get_recipients', key, { user_id }, local_req_log, remote_req_log)
+	return resharding.process_request('addrbook_get_recipients_old', 'addrbook_get_recipients', key, { user_id }, local_req_log, remote_req_log)
 end
 
 function addrbook_get(user_id)
@@ -78,7 +78,7 @@ function addrbook_get(user_id)
 		end
 	end
 
-	resharding.process_request('addrbook_get_old', 'addrbook_get', key, { user_id }, local_req_log, remote_req_log);
+	return resharding.process_request('addrbook_get_old', 'addrbook_get', key, { user_id }, local_req_log, remote_req_log);
 end
 
 function addrbook_put(user_id, book)
@@ -89,7 +89,7 @@ function addrbook_put(user_id, book)
 		local_req_log = function () print("Trying to call addrbook_put locally, uid == " .. key) end
 	end
 
-	resharding.process_request('addrbook_put_old', 'addrbook_put',
+	return resharding.process_request('addrbook_put_old', 'addrbook_put',
 		key, { user_id, book }, local_req_log,
 		function () print("Trying to call addrbook_put remotely, uid == " .. key) end
 	)
@@ -103,7 +103,7 @@ function addrbook_delete(user_id)
 		local_req_log = function () print("Trying to call addrbook_delete locally, uid == " .. key) end
 	end
 
-	resharding.process_request('addrbook_delete_old', 'addrbook_delete',
+	return resharding.process_request('addrbook_delete_old', 'addrbook_delete',
 		key, { user_id }, local_req_log,
 		function () print("Trying to call addrbook_delete remotely, uid == " .. key) end
 	)
