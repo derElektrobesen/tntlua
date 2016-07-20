@@ -56,9 +56,6 @@ function addrbook_add_recipient(user_id, rcp_email, rcp_name, timestamp)
 	local t = box.select_limit(1, 0, 0, 1, user_id, rcp_email)
 	if t == nil then
 		box.insert(1, user_id, rcp_email, rcp_name, timestamp, 1)
-		if addrbook_log_ab_creations then
-			print("Trying to create AB for user " .. user_id .. ", shard == " .. calculate_shard_number(user_id))
-		end
 		return 1 -- new contact inserted
 	end
 	if box.unpack('i', t[3]) < timestamp then
