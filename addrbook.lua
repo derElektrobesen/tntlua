@@ -26,13 +26,14 @@
 -- space[1].index[0].key_field[1].type = "STR"
 
 addrbook_log_ab_creations = false
+MAX_SHARD_INDEX = 1024
 
 if perl_crc32 == nil then
-    if require == nil then
-        error("Add this module into init.lua or preload perl_crc32 before module invoke")
-    else
-        require('perl_crc32')
-    end
+	if require == nil then
+		error("Add this module into init.lua or preload perl_crc32 before module invoke")
+	else
+		require('perl_crc32')
+	end
 end
 
 local function calculate_shard_number(key)
