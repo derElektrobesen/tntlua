@@ -486,3 +486,25 @@ function profile_print_specific_str_int_key_bit(key_id, bit_n)
         bit_n
     )
 end
+
+function profile_print_fields_length(min_field_len_kb)
+    if box.cfg.replication_source == nil then error("replica api only") end
+
+    profile_apply_func(
+        function (profile, min_field_len)
+            local to_print = ""
+            local total_bytes = 0
+            for pref_id, pref_value in pairs(profile.prefs) do
+                local l = pref_value:len()
+                if l >= min_field_len then
+                    local key_id, _ = box.unpack('wa', pref_id)
+                    to_print = to_print .. " " .. tostring(key_id) .. "=" .. tostring(l)
+                end
+                total_bytes = total_bytes + l
+            end
+            if total_bytes then
+                print("FOUND: " .. tostring(profile_id_to_int(profile.id)) .. ": total=" .. tostring(total_bytes) .. to_print)
+            end
+        end, min_field_len_kb * 1024
+    )
+end
