@@ -11,10 +11,12 @@ local function healthcheck(s)
 	}))
 end
 
-local server
-
 -- run_healthchecker is used to start healthcheck listener.
 function run_healthchecker(host, port)
+	if server ~= nil then
+		server:close()
+	end
+
 	server = socket.tcp_server(host, port, healthcheck)
 	if server == nil or server:error() ~= nil then
 		str = "Can't start healthchecker"
